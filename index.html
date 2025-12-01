@@ -1,0 +1,784 @@
+
+
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>SSRM Secure-Pro</title>
+<style>
+  :root{
+    --blue:#003399; --red:#b30000; --white:#ffffff; --card:#f7f7f7; --text:#0b132b;
+    --radius:12px;
+  }
+  html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:var(--white);color:var(--text);}
+  .app{max-width:1000px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;}
+  header{background:var(--blue);color:white;padding:12px 18px;display:flex;align-items:center;gap:12px;border-bottom-left-radius:12px;border-bottom-right-radius:12px;}
+  header img{height:44px;border-radius:8px;}
+  header h1{font-size:18px;margin:0}
+  #headerActions{margin-left:auto;display:flex;gap:8px;align-items:center}
+  main{flex:1;padding:18px;display:flex;flex-direction:column;gap:14px}
+  .center{display:flex;justify-content:center;align-items:center}
+  .card{background:var(--card);border-radius:12px;padding:12px;box-shadow:0 2px 6px rgba(0,0,0,0.06)}
+  .btn{background:var(--blue);color:white;padding:10px 14px;border-radius:10px;border:0;font-weight:600;cursor:pointer}
+  .btn.secondary{background:var(--red)}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  label{font-size:13px;margin-bottom:4px;display:block}
+  input[type=text],input[type=password],select,textarea{width:100%;padding:10px;border-radius:10px;border:1px solid #ddd;font-size:14px;box-sizing:border-box}
+  .small{font-size:13px;color:#555}
+  .muted{color:#666;font-size:12px}
+  .splash{height:56vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--white)}
+  .progress{width:60%;height:10px;background:#eee;border-radius:20px;overflow:hidden;margin-top:16px}
+  .progress > i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--blue),var(--red))}
+  nav{display:flex;gap:10px;flex-wrap:wrap}
+  .rounded{border-radius:12px}
+  .footer{padding:12px;text-align:center;color:#666;font-size:13px}
+  .warning { background:#fff3cd; border-left:4px solid #ffa726; padding:8px; border-radius:8px;}
+  .role-btn{width:240px;padding:14px 18px;border-radius:12px;border:0;color:white;font-weight:700;cursor:pointer;background:var(--red);font-size:16px}
+  .vertical{display:flex;flex-direction:column;gap:12px;align-items:center}
+  .back-btn{background:#888;color:white;padding:8px 10px;border-radius:8px;border:0;cursor:pointer;margin-bottom:10px}
+  .card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+  .borrow-card .muted{font-size:12px}
+  @media(min-width:720px){
+    main{padding:28px}
+    header h1{font-size:22px}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <img id="logoImg" src="mubs_logo.png" alt="logo" onerror="this.style.display='none'">
+    <h1>SSRM Secure-Pro</h1>
+    <div id="headerActions"></div>
+  </header>
+
+  <main id="mainArea"></main>
+
+  <div class="footer small">SSRM Secure-Pro — Offline verification tool</div>
+</div>
+
+<script>
+/* ======================================================
+   Configuration and storage constants
+   ====================================================== */
+const LS = window.localStorage;
+const KEY_USERS = "mubs_users_v2";
+const KEY_RECORDS = "mubs_records_v2";
+const KEY_LOGO = "mubs_logo_v2";
+const KEY_SIGNUPS = "mubs_signup_codes_v1";
+const KEY_MASTER = "mubs_master_key_v1";            // new: exported master AES key (base64)
+const KEY_GLOBAL_INDEX = "mubs_global_borrows_v1";  // new: map code -> { username, rec }
+const KEY_TTL = 30 * 24 * 3600;
+
+/* ======================================================
+   Embedded sign-up codes (50) - single-use pool (ISB format as requested)
+   ====================================================== */
+const EMBEDDED_CODES = (function(){
+  return [
+"ISB-8F7K-1ZQ9","ISB-4J2C-6LV0","ISB-0P9M-5TG2","ISB-7N3R-4XB1","ISB-2A6V-8QH5",
+"ISB-9D0S-3UC8","ISB-1B5L-7YW4","ISB-6E8T-2KM3","ISB-3F1Q-9ZP6","ISB-5C7H-0NV2",
+"ISB-2K9X-4RD7","ISB-8M0P-6SJ1","ISB-4V3Z-1LT9","ISB-7G5Y-2QC0","ISB-0H2B-8NX3",
+"ISB-6P1D-9WF4","ISB-3L8T-5KV0","ISB-9Q4C-2MJ6","ISB-1S7R-0ZG3","ISB-5A2N-8HD9",
+"ISB-0V6K-3YP1","ISB-4M9Q-7BC2","ISB-8T1F-5LX0","ISB-2R3H-9ZW6","ISB-6N0D-4SJ8",
+"ISB-3P7C-1VK9","ISB-9L2Q-5MY0","ISB-1G8T-4HF3","ISB-7B5R-0ZK2","ISB-0C6M-9XN7",
+"ISB-4Q1P-8LD3","ISB-8H3V-2YK5","ISB-2M9S-6JF0","ISB-6A4T-1ZC8","ISB-3N7D-5XP2",
+"ISB-9R0K-8QB1","ISB-1V5L-3YM7","ISB-7C2F-9ND0","ISB-0J8P-4XS6","ISB-5T1Q-2KH9",
+"ISB-3B6M-7ZL0","ISB-8D4R-1YP5","ISB-2K9N-3VF8","ISB-6Q0C-5SJ2","ISB-4M7T-9HB1"
+  ];
+})();
+
+/* ======================================================
+   Crypto utilities (Web Crypto API) + Master key helpers
+   ====================================================== */
+async function sha256Hex(str){
+  const enc = new TextEncoder().encode(str);
+  const hash = await crypto.subtle.digest("SHA-256", enc);
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2,"0")).join("");
+}
+function toBase64(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))); }
+function fromBase64(s){ const bin = atob(s); const arr = new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i); return arr.buffer; }
+
+async function deriveKey(password, saltB64){
+  const pwUtf = new TextEncoder().encode(password);
+  const salt = fromBase64(saltB64);
+  const baseKey = await crypto.subtle.importKey("raw", pwUtf, "PBKDF2", false, ["deriveKey"]);
+  const key = await crypto.subtle.deriveKey(
+    {name:"PBKDF2", salt, iterations:240000, hash:"SHA-256"},
+    baseKey,
+    {name:"AES-GCM", length:256},
+    false,
+    ["encrypt","decrypt"]
+  );
+  return key;
+}
+async function encryptWithKey(key, obj){
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const data = new TextEncoder().encode(JSON.stringify(obj));
+  const cipher = await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, data);
+  return toBase64(iv) + ":" + toBase64(cipher);
+}
+async function decryptWithKey(key, combined){
+  try{
+    const parts = (combined||"").split(":");
+    if(parts.length !== 2) return null;
+    const [ivB64,cipherB64] = parts;
+    const iv = fromBase64(ivB64);
+    const cipher = fromBase64(cipherB64);
+    const plain = await crypto.subtle.decrypt({name:"AES-GCM", iv:new Uint8Array(iv)}, key, cipher);
+    const txt = new TextDecoder().decode(plain);
+    return JSON.parse(txt);
+  }catch(e){
+    return null;
+  }
+}
+
+/* Master key helpers: stored as raw base64 in LS under KEY_MASTER */
+async function ensureMasterKey(){
+  let b64 = LS.getItem(KEY_MASTER);
+  if(!b64){
+    // generate and export
+    const k = await crypto.subtle.generateKey({name:"AES-GCM", length:256}, true, ["encrypt","decrypt"]);
+    const raw = await crypto.subtle.exportKey("raw", k);
+    b64 = toBase64(raw);
+    LS.setItem(KEY_MASTER, b64);
+    return k;
+  } else {
+    const raw = fromBase64(b64);
+    const k = await crypto.subtle.importKey("raw", raw, "AES-GCM", true, ["encrypt","decrypt"]);
+    return k;
+  }
+}
+async function encryptWithMaster(obj){
+  const k = await ensureMasterKey();
+  return encryptWithKey(k, obj);
+}
+async function decryptWithMaster(combined){
+  const k = await ensureMasterKey();
+  return decryptWithKey(k, combined);
+}
+
+/* ======================================================
+   App state & storage helpers
+   ====================================================== */
+let appState = { currentUser:null, currentRole:null, sessionKey:null };
+
+function ensureStorage(){
+  if(!LS.getItem(KEY_USERS)) LS.setItem(KEY_USERS, JSON.stringify({}));
+  if(!LS.getItem(KEY_RECORDS)) LS.setItem(KEY_RECORDS, JSON.stringify({}));
+  if(!LS.getItem(KEY_SIGNUPS)) {
+    const pool = EMBEDDED_CODES.map(c => ({ code: c, used: false }));
+    LS.setItem(KEY_SIGNUPS, JSON.stringify(pool));
+  }
+  if(!LS.getItem(KEY_GLOBAL_INDEX)) LS.setItem(KEY_GLOBAL_INDEX, JSON.stringify({}));
+}
+function getUsers(){ try{return JSON.parse(LS.getItem(KEY_USERS)||"{}")}catch(e){return{}} }
+function setUsers(u){ LS.setItem(KEY_USERS, JSON.stringify(u)); }
+function getRecords(){ try{return JSON.parse(LS.getItem(KEY_RECORDS)||"{}")}catch(e){return{}} }
+function setRecords(r){ LS.setItem(KEY_RECORDS, JSON.stringify(r)); }
+
+function getSignupPool(){ try{return JSON.parse(LS.getItem(KEY_SIGNUPS)||"[]")}catch(e){return[]} }
+function saveSignupPool(pool){ LS.setItem(KEY_SIGNUPS, JSON.stringify(pool)); }
+
+function getUserStorage(username){
+  const recs = getRecords();
+  recs[username] = recs[username] || { items: [], records: [] };
+  return recs[username];
+}
+function saveUserStorage(username, obj){
+  const recs = getRecords();
+  recs[username] = obj;
+  setRecords(recs);
+}
+
+function getGlobalIndex(){ try{return JSON.parse(LS.getItem(KEY_GLOBAL_INDEX)||"{}")}catch(e){return{}} }
+function saveGlobalIndex(idx){ LS.setItem(KEY_GLOBAL_INDEX, JSON.stringify(idx)); }
+
+/* ======================================================
+   initialize default account (lecturer) and signup pool + master key ensure
+   ====================================================== */
+(async function initDefault(){
+  ensureStorage();
+  await ensureMasterKey(); // make sure master key exists
+  const users = getUsers();
+  if(!users.lecturer){
+    const ph = await sha256Hex("mubs2025");
+    users.lecturer = { salt: null, passHash: ph, fullname:"Default Lecturer", dept:"", role:"lecturer", fine_per_day:0 };
+    setUsers(users);
+    const recs = getRecords(); recs.lecturer = { items: [], records: [] }; setRecords(recs);
+  }
+})();
+
+/* ======================================================
+   UI entry points
+   ====================================================== */
+const main = document.getElementById("mainArea");
+const headerActions = document.getElementById("headerActions");
+
+function setHeaderForLoggedIn(){
+  headerActions.innerHTML = "";
+  const logout = document.createElement("button");
+  logout.className = "btn";
+  logout.textContent = "Logout";
+  logout.onclick = ()=>{ appState.currentUser=null; appState.currentRole=null; appState.sessionKey=null; showRoleSelect(); };
+  headerActions.appendChild(logout);
+}
+
+/* ===========================
+   SPLASH -> ROLE SELECT
+   =========================== */
+function showSplash(){
+  main.innerHTML = "";
+  headerActions.innerHTML = "";
+  const s = document.createElement("div"); s.className = "splash center";
+  const logo = document.createElement("img");
+  logo.style.maxWidth="40%"; logo.style.maxHeight="40%"; logo.style.borderRadius="10px";
+  const uploaded = LS.getItem(KEY_LOGO);
+  if(uploaded){ logo.src = uploaded; } else { logo.src = "mubs_logo.png"; logo.onerror = ()=>{ logo.style.display='none'; } }
+  s.appendChild(logo);
+  const h = document.createElement("h2"); h.textContent = "SSRM Secure-Pro"; h.style.marginTop="12px"; s.appendChild(h);
+  const p = document.createElement("div"); p.textContent="Initializing Secure-Pro..."; p.className="small"; s.appendChild(p);
+  const progWrap = document.createElement("div"); progWrap.className="progress rounded";
+  const inner = document.createElement("i"); progWrap.appendChild(inner); s.appendChild(progWrap);
+  main.appendChild(s);
+
+  inner.style.width="0%";
+  let tick=0; const steps=75;
+  const id = setInterval(()=>{ tick++; inner.style.width = (tick/steps*100) + "%"; if(tick>=steps){ clearInterval(id); setTimeout(showRoleSelect,200); } }, 40);
+}
+
+function showRoleSelect(){
+  main.innerHTML = "";
+  headerActions.innerHTML = "";
+  const card = document.createElement("div"); card.className="card center";
+  card.style.flexDirection="column"; card.style.padding="30px";
+  const h = document.createElement("h2"); h.textContent="Select your role"; card.appendChild(h);
+  const wrap = document.createElement("div"); wrap.className="vertical";
+  const btnLect = document.createElement("button"); btnLect.className="role-btn"; btnLect.textContent="Lecturer";
+  const btnLib = document.createElement("button"); btnLib.className="role-btn"; btnLib.textContent="Library Staff";
+  btnLect.onclick = ()=>{ appState.currentRole="lecturer"; showAuth(); };
+  btnLib.onclick = ()=>{ appState.currentRole="librarian"; showAuth(); };
+  wrap.appendChild(btnLect); wrap.appendChild(btnLib);
+  card.appendChild(wrap);
+  main.appendChild(card);
+}
+
+/* ======================================================
+   AUTH (shared for both roles) - login and register (signup code enforced)
+   ====================================================== */
+function showAuth(){
+  main.innerHTML = "";
+  headerActions.innerHTML = ""; // header shows logout only when logged in
+  const container = document.createElement("div"); container.className="card"; container.style.padding="18px";
+  const title = document.createElement("h3"); title.textContent = (appState.currentRole==="lecturer")? "Lecturer Sign In / Register":"Library Staff Sign In / Register"; container.appendChild(title);
+
+  const row = document.createElement("div"); row.className="row"; row.style.marginTop="10px";
+  const btnLogin = document.createElement("button"); btnLogin.className="btn"; btnLogin.textContent="Login";
+  const btnReg = document.createElement("button"); btnReg.className="btn"; btnReg.textContent="Register"; btnReg.style.background="#eee"; btnReg.style.color="#333";
+  row.appendChild(btnLogin); row.appendChild(btnReg);
+  container.appendChild(row);
+
+  const form = document.createElement("div"); form.style.marginTop="12px"; container.appendChild(form);
+  main.appendChild(container);
+
+  function renderLogin(){
+    form.innerHTML="";
+    form.appendChild(labelEl("Username"));
+    const username = inputEl("text"); username.placeholder="username"; form.appendChild(username);
+    form.appendChild(labelEl("Password")); const password = inputEl("password"); form.appendChild(password);
+    const submit = document.createElement("button"); submit.className="btn"; submit.textContent="Login";
+    submit.onclick = async ()=>{
+      const u = username.value.trim(); const p = password.value;
+      if(!u || !p){ alert("Enter username and password"); return; }
+      const users = getUsers();
+      if(!users[u] || users[u].role !== appState.currentRole){ alert("User not found for this role"); return; }
+      const user = users[u];
+      const ph = await sha256Hex(p);
+      if(ph !== user.passHash){ alert("Invalid credentials"); return; }
+      if(!user.salt){
+        const saltB64 = toBase64(crypto.getRandomValues(new Uint8Array(16)).buffer);
+        user.salt = saltB64; users[u] = user; setUsers(users);
+      }
+      const key = await deriveKey(p, user.salt);
+      appState.currentUser = u; appState.sessionKey = key;
+      setHeaderForLoggedIn();
+      if(appState.currentRole==="lecturer") buildDashboard(); else buildLibrarianDashboard();
+    };
+    form.appendChild(submit);
+    const hint = document.createElement("div"); hint.className="muted"; hint.textContent="(If you don't have an account, register below)";
+    form.appendChild(hint);
+  }
+
+  function renderRegister(){
+    form.innerHTML="";
+    form.appendChild(labelEl("Full name")); const fullname = inputEl("text"); form.appendChild(fullname);
+    if(appState.currentRole==="librarian"){ form.appendChild(labelEl("Email (optional)")); const email = inputEl("text"); form.appendChild(email); }
+    form.appendChild(labelEl("Username")); const username = inputEl("text"); form.appendChild(username);
+    form.appendChild(labelEl("Password")); const password = inputEl("password"); form.appendChild(password);
+    if(appState.currentRole==="librarian"){ form.appendChild(labelEl("Fine per day (UGX)")); const fine = inputEl("text"); fine.placeholder="e.g., 2000"; form.appendChild(fine); }
+    form.appendChild(labelEl("Sign-up Code (ask admin)")); const signupCodeInput = inputEl("text"); signupCodeInput.placeholder="Enter sign-up code"; form.appendChild(signupCodeInput);
+    const submit = document.createElement("button"); submit.className="btn"; submit.textContent="Register";
+    submit.onclick = async ()=>{
+      const u = username.value.trim(); const p = password.value; const name = fullname.value.trim();
+      const signupCode = (signupCodeInput.value||"").trim().toUpperCase();
+      if(!u || !p){ alert("Enter username and password"); return; }
+      const pool = getSignupPool();
+      const foundIdx = pool.findIndex(x => x.code.toUpperCase() === signupCode);
+      if(foundIdx === -1){ alert("Invalid sign-up code."); return; }
+      if(pool[foundIdx].used){ alert("Sign-up code already used."); return; }
+      const users = getUsers();
+      if(users[u]){ alert("Username exists"); return; }
+      const saltArr = crypto.getRandomValues(new Uint8Array(16)); const saltB64 = toBase64(saltArr.buffer);
+      const ph = await sha256Hex(p);
+      const newUser = { salt: saltB64, passHash: ph, fullname: name, dept:"", role: appState.currentRole, fine_per_day:0 };
+      if(appState.currentRole==="librarian"){
+        const fineInput = Array.from(form.querySelectorAll('input[type=text]')).slice(-1)[0];
+        const fp = Number((fineInput && fineInput.value) || 0) || 0;
+        newUser.fine_per_day = fp;
+      }
+      users[u] = newUser; setUsers(users);
+      const recs = getRecords(); recs[u] = { items: [], records: [] }; setRecords(recs);
+      pool[foundIdx].used = true; saveSignupPool(pool);
+      alert("Registered. Please login.");
+      renderLogin();
+    };
+    form.appendChild(submit);
+  }
+
+  btnLogin.onclick = ()=>{ btnLogin.style.background="var(--blue)"; btnReg.style.background="#eee"; btnReg.style.color="#333"; renderLogin(); }
+  btnReg.onclick = ()=>{ btnReg.style.background="var(--blue)"; btnReg.style.color="#fff"; btnLogin.style.background="#eee"; btnLogin.style.color="#333"; renderRegister(); }
+  renderLogin();
+}
+
+/* ======================================================
+   LECTURER DASHBOARD + flows
+   ====================================================== */
+function buildDashboard(){
+  main.innerHTML = ""; headerActions.innerHTML = "";
+  setHeaderForLoggedIn();
+
+  const topCard = createCard();
+  const h = document.createElement("h2"); h.textContent = `Welcome, ${appState.currentUser}`; topCard.appendChild(h);
+  const small = document.createElement("div"); small.className="muted"; small.textContent="Lecturer Dashboard"; topCard.appendChild(small);
+  main.appendChild(topCard);
+
+  main.appendChild(cardWithButton("Class Enrollment","Register students and generate secret keys","Open Enrollment", openEnrollment));
+  main.appendChild(cardWithButton("Exam Verification","Enter secret key to verify student presence","Open Verification", openVerification));
+  main.appendChild(cardWithButton("Records","View and manage saved student records","View Records", ()=>viewRecords(appState.currentUser)));
+}
+
+/* Lecturer helper UI pieces */
+function createCard(){ const c=document.createElement("div"); c.className="card"; c.style.marginTop="12px"; return c; }
+function cardWithButton(title,desc,btnText,onclick){ const c=createCard(); const t=document.createElement("strong"); t.textContent=title; c.appendChild(t); const d=document.createElement("div"); d.className="small muted"; d.textContent=desc; c.appendChild(d); const b=document.createElement("button"); b.className="btn rounded"; b.textContent=btnText; b.style.marginTop="10px"; b.onclick=onclick; c.appendChild(b); return c; }
+
+async function openEnrollment(){
+  navigateToView("Student Enrollment", async (view, back)=>{
+    const fields = ["Full Name","Course","Age","NIN","Purpose"];
+    const inputs = {};
+    fields.forEach(f=>{ view.appendChild(labelEl(f)); const i=inputEl("text"); view.appendChild(i); inputs[f]=i; });
+    const saveBtn=document.createElement("button"); saveBtn.className="btn"; saveBtn.textContent="Generate Key & Save";
+    saveBtn.onclick=async ()=>{
+      for(const f of fields) if(!inputs[f].value.trim()){ alert("Fill all fields"); return; }
+      const payload={}; fields.forEach(f=>payload[f]=inputs[f].value.trim());
+      const shortKey = generateShortKey(6);
+      const token = await encryptWithKey(appState.sessionKey, {lecturer: appState.currentUser, data: payload, created: new Date().toISOString()});
+      const recs = getUserStorage(appState.currentUser); recs.records.push({ type:"enroll", key: shortKey, token, created: new Date().toISOString(), used:false, expiry_ts: Date.now()/1000 + KEY_TTL }); saveUserStorage(appState.currentUser, recs);
+      alert(`Saved. Secret Key: ${shortKey}\nValid for ${Math.round(KEY_TTL/86400)} days.`);
+      back();
+    };
+    view.appendChild(saveBtn);
+  });
+}
+
+function openVerification(){
+  navigateToView("Exam Verification", async (view, back)=>{
+    view.appendChild(labelEl("Secret Key:")); const keyInput = inputEl("text"); view.appendChild(keyInput);
+    const result = document.createElement("pre"); result.style.minHeight="120px"; result.style.background="#fff"; result.style.padding="8px"; result.style.borderRadius="8px"; view.appendChild(result);
+    const countdown = document.createElement("div"); countdown.className="muted"; view.appendChild(countdown);
+    const verifyBtn=document.createElement("button"); verifyBtn.className="btn"; verifyBtn.textContent="Verify Key";
+    verifyBtn.onclick=async ()=>{
+      const entered = keyInput.value.trim().toUpperCase(); if(!entered){ alert("Enter key"); return; }
+      const recs = readRecords(appState.currentUser) || []; const found = recs.find(r=> r.key && r.key.toUpperCase()===entered);
+      if(!found){ alert("No record for that key."); return; } if(found.used){ alert("This key was already used."); return; }
+      const now = Date.now()/1000; if(now > found.expiry_ts){ alert("Key expired."); found.used=true; rewriteRecords(appState.currentUser, recs); return; }
+      const payload = await decryptWithKey(appState.sessionKey, found.token); if(!payload){ alert("Decryption failed. Ensure correct password."); return; }
+      result.textContent = `Name: ${payload.data["Full Name"]}\nCourse: ${payload.data.Course}\nAge: ${payload.data.Age}\nNIN: ${payload.data.NIN}\nPurpose: ${payload.data.Purpose}\nCreated: ${payload.created}`;
+      const rem = Math.max(0, Math.ceil(found.expiry_ts - Date.now()/1000)); countdown.textContent = `Key visible for ${rem} s`;
+      setTimeout(()=>{ found.used=true; rewriteRecords(appState.currentUser, recs); }, Math.max(0,(found.expiry_ts - now)*1000));
+    };
+    view.appendChild(verifyBtn);
+  });
+}
+
+function viewRecords(username){
+  navigateToView("Saved Records", (view, back)=>{
+    const recs = readRecords(username) || [];
+    if(!recs.length){ view.appendChild(document.createElement("div")).textContent="No records found."; return; }
+    recs.slice().reverse().forEach(r=>{
+      const d=document.createElement("div"); d.style.borderBottom="1px solid #eee"; d.style.padding="8px 0";
+      d.innerHTML=`<div class="small"><strong>Type:</strong> ${r.type||''} &nbsp; <strong>Key:</strong> ${r.key||''} &nbsp; <strong>Used:</strong> ${r.used}</div><div class="muted small">Created: ${new Date(r.created).toLocaleString()}</div>`;
+      view.appendChild(d);
+    });
+  });
+}
+
+/* ======================================================
+   Librarian Dashboard + flows (global index + master key)
+   ====================================================== */
+function buildLibrarianDashboard(){
+  main.innerHTML = ""; headerActions.innerHTML = "";
+  setHeaderForLoggedIn();
+  const topCard = createCard(); topCard.appendChild(h2Text(`Library Dashboard — ${appState.currentUser}`)); topCard.appendChild(divText("Manage books, borrowers and returns"));
+  main.appendChild(topCard);
+
+  main.appendChild(cardWithButton("Books Catalogue","Add and manage available books","Manage Books", openManageBooks));
+  main.appendChild(cardWithButton("Borrow Book","Register borrow, assign encrypted code","Borrow Book", openBorrowFlow));
+  main.appendChild(cardWithButton("Borrowers","View active borrowers and remaining time & fines","View Borrowers", openBorrowersView));
+  main.appendChild(cardWithButton("Return / Decrypt","Decrypt by code and process returns","Return Book / Decrypt", openLibrarianDecryption));
+  main.appendChild(cardWithButton("Settings","Change fine/day and other settings","Settings", openLibrarianSettings));
+}
+
+function openManageBooks(){
+  navigateToView("Manage Books", (view, back)=>{
+    const storage = getUserStorage(appState.currentUser);
+    const items = storage.items || [];
+    const listWrap = document.createElement("div"); view.appendChild(listWrap);
+    function renderList(){
+      listWrap.innerHTML="";
+      if(items.length===0) listWrap.innerHTML = `<div class="muted">No books yet</div>`;
+      items.forEach((b,i)=>{
+        const row=document.createElement("div"); row.style.display="flex"; row.style.justifyContent="space-between"; row.style.alignItems="center"; row.style.padding="6px 0";
+        row.innerHTML = `<div><strong>${b.title}</strong> <div class="muted small">${b.author||''} • Qty: ${b.qty}</div></div>`;
+        const right=document.createElement("div");
+        const remBtn=document.createElement("button"); remBtn.className="btn"; remBtn.textContent="Remove"; remBtn.onclick=()=>{ items.splice(i,1); storage.items=items; saveUserStorage(appState.currentUser, storage); renderList(); };
+        right.appendChild(remBtn);
+        row.appendChild(right);
+        listWrap.appendChild(row);
+      });
+    }
+    renderList();
+    view.appendChild(labelEl("Title")); const tIn = inputEl("text"); view.appendChild(tIn);
+    view.appendChild(labelEl("Author (optional)")); const aIn = inputEl("text"); view.appendChild(aIn);
+    view.appendChild(labelEl("Quantity")); const qIn = inputEl("text"); qIn.placeholder="e.g., 3"; view.appendChild(qIn);
+    const addBtn = document.createElement("button"); addBtn.className="btn"; addBtn.textContent="Add Book";
+    addBtn.onclick=()=>{ if(!tIn.value.trim()){ alert("Enter title"); return; } const q = Math.max(0, parseInt(qIn.value) || 0); items.push({title:tIn.value.trim(), author:aIn.value.trim(), qty:q}); storage.items=items; saveUserStorage(appState.currentUser, storage); tIn.value=''; aIn.value=''; qIn.value=''; renderList(); };
+    view.appendChild(addBtn);
+  });
+}
+
+function openBorrowFlow(){
+  navigateToView("Borrow Book", (view, back)=>{
+    const storage = getUserStorage(appState.currentUser);
+    const items = storage.items || [];
+    if(items.length===0){ view.appendChild(divText("No books available. Add books first.")); return; }
+    view.appendChild(labelEl("Select Book")); const sel = document.createElement("select"); sel.className="rounded"; items.forEach((b,i)=>{ const o=document.createElement("option"); o.value=i; o.textContent=`${b.title} ${b.author? ' — ' + b.author: ''} • Qty: ${b.qty}`; sel.appendChild(o); }); view.appendChild(sel);
+    const fields = ["Student No","Full Name","Course","Phone","NIN"]; const inputs={};
+    fields.forEach(f=>{ view.appendChild(labelEl(f)); const inp=inputEl("text"); view.appendChild(inp); inputs[f]=inp; });
+    view.appendChild(labelEl("Borrow Duration (hours)")); const dur = inputEl("text"); dur.placeholder="e.g., 48"; view.appendChild(dur);
+    const btn = document.createElement("button"); btn.className="btn"; btn.textContent="Register Borrow & Generate Code";
+    btn.onclick = async ()=>{
+      for(const f of fields) if(!inputs[f].value.trim()){ alert("Fill all fields"); return; }
+      if(!dur.value.trim() || isNaN(Number(dur.value.trim()))){ alert("Enter valid duration (hours)"); return; }
+      const idx = Number(sel.value); const book = items[idx];
+      if(!book || book.qty <= 0){ alert("Selected book is out of stock"); return; }
+      const hours = Number(dur.value.trim());
+      const payload = { student_no: inputs["Student No"].value.trim(), name: inputs["Full Name"].value.trim(), course: inputs["Course"].value.trim(), phone: inputs["Phone"].value.trim(), nin: inputs["NIN"].value.trim(), book_title: book.title, book_author: book.author, borrow_hours: hours };
+      const shortKey = generateShortKey(8);
+
+      // encrypt token with creator's session key (for backward compatibility) AND with master key
+      let token = null;
+      try{ token = await encryptWithKey(appState.sessionKey, { librarian: appState.currentUser, data: payload, created: new Date().toISOString() }); }catch(e){ token = null; }
+      const token_master = await encryptWithMaster({ librarian: appState.currentUser, data: payload, created: new Date().toISOString() });
+
+      const expiry = Date.now()/1000 + hours*3600;
+      const rec = { type:"borrow", key: shortKey, token, token_master, created: new Date().toISOString(), used:false, expiry_ts: expiry };
+      appendRecord(appState.currentUser, rec);
+      // reduce stock
+      book.qty = Math.max(0, (book.qty||0) - 1);
+      storage.items = items; saveUserStorage(appState.currentUser, storage);
+      alert(`Borrow registered.\nSecret Code: ${shortKey}\nExpires in ${hours} hours.`);
+      back();
+    };
+    view.appendChild(btn);
+  });
+}
+
+/* ---------- FIXED: View Borrowers (use global index & decrypt via master or session) ---------- */
+function openBorrowersView(){
+  navigateToView("Borrowers", (view, back)=>{
+    // Load global index
+    const idx = getGlobalIndex();
+    const codes = Object.keys(idx || {});
+    if(codes.length === 0){
+      view.appendChild(divText("No borrow records."));
+      return;
+    }
+
+    const grid = document.createElement("div");
+    grid.className = "card-grid";
+    view.appendChild(grid);
+
+    // Show reverse order by created (if available)
+    const entries = codes.map(c => ({ code:c, ent: idx[c] })).sort((a,b)=>{
+      const ta = (a.ent && a.ent.rec && a.ent.rec.created) ? new Date(a.ent.rec.created).getTime() : 0;
+      const tb = (b.ent && b.ent.rec && b.ent.rec.created) ? new Date(b.ent.rec.created).getTime() : 0;
+      return tb - ta;
+    });
+
+    entries.forEach(({code, ent})=>{
+      const r = ent.rec;
+      const wrapper = document.createElement("div");
+      wrapper.className = "card borrow-card";
+      wrapper.style.padding = "12px";
+      const title = document.createElement("div");
+      title.innerHTML = `<strong>Code: ${r.key}</strong>`;
+      wrapper.appendChild(title);
+      const meta = document.createElement("div"); meta.className="muted small"; meta.textContent = `Owner: ${ent.username} • Created: ${new Date(r.created).toLocaleString()}`; wrapper.appendChild(meta);
+
+      (async ()=>{
+        // try decrypt with sessionKey first (useful if creator logged in), else with master
+        let payload = null;
+        if(r.token){
+          try{ payload = await decryptWithKey(appState.sessionKey, r.token); }catch(e){ payload = null; }
+        }
+        if(!payload && r.token_master){
+          payload = await decryptWithMaster(r.token_master);
+        }
+
+        if(payload){
+          const due = new Date(r.expiry_ts*1000);
+          const remSec = Math.max(0, Math.ceil(r.expiry_ts - Date.now()/1000));
+          const remHours = Math.floor(remSec/3600); const remMins = Math.floor((remSec%3600)/60);
+          const daysOver = Math.max(0, Math.ceil((Date.now()/1000 - r.expiry_ts)/86400));
+          const users = getUsers(); const libUser = users[appState.currentUser] || {}; const finePerDay = Number(libUser.fine_per_day || 0);
+          const fine = daysOver * finePerDay;
+          const info = document.createElement("div"); info.className="muted small";
+          info.innerHTML = `<div><strong>Student:</strong> ${payload.data.name} (${payload.data.student_no})</div>
+            <div><strong>Course:</strong> ${payload.data.course} • <strong>Phone:</strong> ${payload.data.phone}</div>
+            <div><strong>NIN:</strong> ${payload.data.nin}</div>
+            <div><strong>Book:</strong> ${payload.data.book_title}${payload.data.book_author? ' — '+payload.data.book_author: ''}</div>
+            <div><strong>Due:</strong> ${due.toLocaleString()} • Remaining: ${remHours}h ${remMins}m</div>
+            ${daysOver>0? `<div style="color:#b30000"><strong>Overdue days:</strong> ${daysOver} • <strong>Fine:</strong> ${fine} UGX</div>`: ''}`;
+          wrapper.appendChild(info);
+
+          const btnRow = document.createElement("div"); btnRow.style.marginTop="10px"; btnRow.style.display="flex"; btnRow.style.gap="8px";
+          const decryptBtn = document.createElement("button"); decryptBtn.className="btn"; decryptBtn.textContent="View / Return";
+          decryptBtn.onclick = ()=>{ openLibrarianDecryption(null, r.key); };
+          btnRow.appendChild(decryptBtn);
+          wrapper.appendChild(btnRow);
+        } else {
+          wrapper.appendChild(divText("Student info encrypted (login key or master key required)."));
+        }
+      })();
+
+      grid.appendChild(wrapper);
+    });
+  });
+}
+
+/* ---------- FIXED: Decrypt & Process Return (search global index, decrypt with master or session, update owner storage & global index) ---------- */
+function openLibrarianDecryption(viewArg, preCode){
+  const runView = (view, back) => {
+    view.appendChild(labelEl("Enter Secret Code:"));
+    const code = inputEl("text");
+    view.appendChild(code);
+    if(preCode) code.value = preCode;
+
+    const out = document.createElement("pre");
+    out.style.minHeight = "120px";
+    out.style.background = "#fff";
+    out.style.padding = "8px";
+    out.style.borderRadius = "8px";
+    view.appendChild(out);
+
+    const btn = document.createElement("button");
+    btn.className = "btn";
+    btn.textContent = "Decrypt & Process Return";
+
+    btn.onclick = async () => {
+      const enteredRaw = code.value.trim();
+      const entered = enteredRaw.toUpperCase();
+      if(!entered){ alert("Enter code"); return; }
+
+      const idx = getGlobalIndex();
+      const ent = idx[entered];
+      if(!ent || !ent.rec){ alert("No record found for that code"); return; }
+      const found = ent.rec;
+      const owner = ent.username || appState.currentUser;
+
+      if(found.used){ alert("This code has already been processed as returned."); return; }
+
+      // attempt decrypt: try session key (in case creator is logged in and token exists), else try master
+      let payload = null;
+      if(found.token){
+        try{ payload = await decryptWithKey(appState.sessionKey, found.token); }catch(e){ payload = null; }
+      }
+      if(!payload && found.token_master){
+        payload = await decryptWithMaster(found.token_master);
+      }
+      if(!payload){ alert("Decryption failed. Ensure master key exists or correct password."); return; }
+
+      const nowSec = Date.now()/1000;
+      const overdueSec = Math.max(0, nowSec - found.expiry_ts);
+      const overdueDays = Math.ceil(overdueSec/86400);
+      const users = getUsers();
+      const librarian = users[appState.currentUser] || {};
+      const finePerDay = Number(librarian.fine_per_day || 0);
+      const totalFine = overdueDays * finePerDay;
+
+      out.textContent = `Student: ${payload.data.name}\nStudent No: ${payload.data.student_no}\nCourse: ${payload.data.course}\nPhone: ${payload.data.phone}\nNIN: ${payload.data.nin}\nBook: ${payload.data.book_title}\nBorrowed at: ${found.created}\nDue at: ${new Date(found.expiry_ts*1000).toLocaleString()}\nOverdue days: ${overdueDays}\nFine/day: ${finePerDay}\nTotal fine: ${totalFine}`;
+
+      if(confirm(`Process return? This will increment book stock and mark record returned. Total fine: ${totalFine}`)){
+        // Update owner storage books & mark record used in owner storage and global index
+        const ownerStorage = getUserStorage(owner);
+        const items = ownerStorage.items || [];
+        const book = items.find(it => it.title === payload.data.book_title && (it.author||"") === (payload.data.book_author||""));
+        if(book){ book.qty = (book.qty || 0) + 1; ownerStorage.items = items; }
+
+        // mark used in owner's records
+        const ownerRecords = ownerStorage.records || [];
+        const ownerRecordIdx = ownerRecords.findIndex(r => r.key && r.key.toUpperCase() === entered);
+        if(ownerRecordIdx !== -1){
+          ownerRecords[ownerRecordIdx].used = true;
+          ownerStorage.records = ownerRecords;
+        } else {
+          // fallback: if record reference is same object, mark used
+          found.used = true;
+          ownerStorage.records = ownerRecords;
+        }
+
+        saveUserStorage(owner, ownerStorage);
+
+        // update global index entry
+        ent.rec.used = true;
+        idx[entered] = ent;
+        saveGlobalIndex(idx);
+
+        alert("Return processed. Stock updated.");
+        buildLibrarianDashboard();
+      }
+    };
+
+    view.appendChild(btn);
+
+    if(preCode){
+      setTimeout(()=>{ code.focus(); }, 150);
+    }
+  };
+
+  if(viewArg){
+    runView(viewArg[0], viewArg[1]);
+  } else {
+    navigateToView("Return / Decrypt", (view, back)=> runView(view, back));
+  }
+}
+
+function openLibrarianSettings(){
+  navigateToView("Settings", (view, back)=>{
+    const users = getUsers(); const me = users[appState.currentUser] || {};
+    view.appendChild(labelEl("Fine per day (UGX)")); const fine = inputEl("text"); fine.value = String(me.fine_per_day || 0); view.appendChild(fine);
+    const save = document.createElement("button"); save.className="btn"; save.textContent="Save Settings";
+    save.onclick = ()=>{ const v = Number(fine.value) || 0; me.fine_per_day = v; users[appState.currentUser]=me; setUsers(users); alert("Settings saved."); back(); };
+    view.appendChild(save);
+  });
+}
+
+/* ======================================================
+   Storage helpers (appendRecord updated to update global index)
+   ====================================================== */
+function appendRecord(username, entry){
+  const storage = getUserStorage(username);
+  storage.records = storage.records || [];
+  storage.records.push(entry);
+  saveUserStorage(username, storage);
+
+  // Update global index for borrow entries so librarians can see them globally
+  if(entry && entry.type === "borrow" && entry.key){
+    const idx = getGlobalIndex();
+    idx[entry.key.toUpperCase()] = { username, rec: entry };
+    saveGlobalIndex(idx);
+  }
+}
+function readRecords(username){
+  const storage = getUserStorage(username);
+  storage.records = storage.records || [];
+  return storage.records;
+}
+function rewriteRecords(username, arr){
+  const storage = getUserStorage(username);
+  storage.records = arr;
+  saveUserStorage(username, storage);
+  // If rewriting removed/changed borrow keys, refresh global index (safe approach: rebuild global index)
+  rebuildGlobalIndex();
+}
+function rebuildGlobalIndex(){
+  const all = getRecords();
+  const idx = {};
+  for(const uname in all){
+    const recs = all[uname]?.records || [];
+    recs.forEach(r => {
+      if(r && r.type === "borrow" && r.key){
+        idx[r.key.toUpperCase()] = { username: uname, rec: r };
+      }
+    });
+  }
+  saveGlobalIndex(idx);
+}
+
+/* ======================================================
+   Generic navigation helper - new view & back button
+   ====================================================== */
+function navigateToView(title, renderFn){
+  main.innerHTML = "";
+  const back = () => {
+    if(appState.currentRole==="lecturer") buildDashboard();
+    else buildLibrarianDashboard();
+  };
+  const headerBack = document.createElement("button"); headerBack.className="back-btn"; headerBack.textContent="← Back"; headerBack.onclick = back;
+  main.appendChild(headerBack);
+  const titleEl = document.createElement("h2"); titleEl.textContent=title; main.appendChild(titleEl);
+  const view = document.createElement("div"); view.className="card"; view.style.marginTop="8px"; main.appendChild(view);
+  renderFn(view, back);
+}
+
+/* ======================================================
+   Utility UI & helpers
+   ====================================================== */
+function labelEl(txt){ const l=document.createElement("label"); l.textContent=txt; return l; }
+function inputEl(type="text"){ const i=document.createElement("input"); i.type=type; i.className="rounded"; return i; }
+function generateShortKey(n=6){ const chars="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"; let s=""; for(let i=0;i<n;i++) s+=chars[Math.floor(Math.random()*chars.length)];return s; }
+function createTextDiv(txt){ const d=document.createElement("div"); d.textContent=txt; return d; }
+function divText(txt){ const d=document.createElement("div"); d.className="muted"; d.textContent=txt; return d; }
+function h2Text(txt){ const h=document.createElement("h2"); h.textContent=txt; return h; }
+function generateSignUpCodesTextList(){ return getSignupPool().map(x => `${x.code} — ${x.used ? 'USED' : 'AVAILABLE'}`).join("\n"); }
+
+/* ======================================================
+   Logo Upload - kept (click header logo)
+   ====================================================== */
+function showLogoUploaderSmall(){
+  const logo = document.getElementById("logoImg");
+  logo.title = "Tap to upload logo";
+  logo.style.cursor = "pointer";
+  logo.onclick = ()=>{ triggerLogoUpload(); };
+}
+function triggerLogoUpload(){
+  const inp = document.createElement("input"); inp.type="file"; inp.accept="image/*";
+  inp.onchange = (ev)=>{ const f = ev.target.files[0]; if(!f) return; const reader = new FileReader(); reader.onload = ()=>{ LS.setItem(KEY_LOGO, reader.result); document.getElementById("logoImg").src = reader.result; alert("Logo uploaded to browser storage."); }; reader.readAsDataURL(f); };
+  inp.click();
+}
+
+/* ======================================================
+   Initialize UI
+   ====================================================== */
+ensureStorage();
+rebuildGlobalIndex(); // make sure global index is consistent
+showSplash();
+showLogoUploaderSmall();
+
+</script>
+</body>
+</html>
+
+
+
+
